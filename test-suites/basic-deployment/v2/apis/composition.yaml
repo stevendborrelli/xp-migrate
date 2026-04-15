@@ -1,0 +1,85 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: application
+spec:
+  compositeTypeRef:
+    apiVersion: infra.example.com/v1alpha1
+    kind: Application
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: crossplane-contrib-function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            ---
+            apiVersion: kubernetes.crossplane.io/v1alpha2
+            kind: Object
+            metadata:
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: namespace
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              forProvider:
+                manifest:
+                  apiVersion: v1
+                  kind: Namespace
+                  metadata:
+                    name: {{ .observed.composite.resource.metadata.name }}
+            ---
+            apiVersion: kubernetes.crossplane.io/v1alpha2
+            kind: Object
+            metadata:
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: deployment
+            spec:
+              forProvider:
+                manifest:
+                  apiVersion: apps/v1
+                  kind: Deployment
+                  metadata:
+                    annotations:
+                      gotemplating.fn.crossplane.io/composition-resource-name: deployment
+                    namespace: {{ .observed.composite.resource.metadata.name }}
+                    labels:
+                      app: {{ .observed.composite.resource.metadata.name }}
+                  spec:
+                    selector:
+                      matchLabels:
+                        app: {{ .observed.composite.resource.metadata.name }}
+                    template:
+                      metadata:
+                        labels:
+                          app: {{ .observed.composite.resource.metadata.name }}
+                      spec:
+                        containers:
+                        - name: {{ .observed.composite.resource.metadata.name }}
+                          image: {{ .observed.composite.resource.spec.deployment.containerImage }}
+                          ports:
+                          - containerPort: 80
+            ---
+            apiVersion: kubernetes.crossplane.io/v1alpha2
+            kind: Object
+            metadata:
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: configmap
+            spec:
+              forProvider:
+                manifest:
+                  apiVersion: v1
+                  kind: ConfigMap
+                  metadata:
+                    name: {{ $.observed.composite.resource.metadata.name }}
+                    namespace: {{ $.observed.composite.resource.metadata.name }}
+                  data:
+                  {{ range $key, $val :=  $.observed.composite.resource.spec.configMap  }}
+                    {{ $key }}: {{ $val | quote }}
+                  {{ end }}   
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: crossplane-contrib-function-auto-ready

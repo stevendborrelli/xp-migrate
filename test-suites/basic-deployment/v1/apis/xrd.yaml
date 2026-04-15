@@ -1,0 +1,43 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xapplications.infra.example.com
+spec:
+  group: infra.example.com
+  names:
+    kind: XApplication
+    plural: xapplications
+  claimNames:
+    kind: Application
+    plural: applications
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                configMap:
+                  description: keys and values to create in the ConfigMap
+                  type: object
+                  additionalProperties:
+                    type: string
+                  example:
+                    key1: value1
+                    key2: |
+                      #!/bin/sh
+                      echo "hello world"
+                deployment:
+                  description: Deployment Settings
+                  type: object
+                  properties:
+                    containerImage:
+                      type: string
+                      default: sverrirab/kube-test-container:v1.2
+                      description: Container Image to use for the Deployment
+                  required:
+                  - containerImage
