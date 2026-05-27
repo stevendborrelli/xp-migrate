@@ -14,14 +14,13 @@ A Go program that automates the analysis and migration of Crossplane v1 configur
 ## Installation
 
 ```bash
-cd plugins/crossplane/tools/xp-migrate
 go build -o xp-migrate
 ```
 
 Or install directly:
 
 ```bash
-go install github.com/upbound/xp-migrate@latest
+go install github.com/stevendborrelli/xp-migrate@latest
 ```
 
 ## Usage
