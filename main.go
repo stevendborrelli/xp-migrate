@@ -1,3 +1,4 @@
+// migrates crosplane v1 compositions to v2
 package main
 
 import (
@@ -36,4 +37,5 @@ func init() {
 	rootCmd.AddCommand(analyzeCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(validateCmd)
+	rootCmd.AddCommand(initConfigCmd)
 }

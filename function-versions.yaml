@@ -1,0 +1,17 @@
+# Crossplane Function Versions
+# This file defines the recommended versions for composition functions.
+# xp-migrate will use these versions when migrating function definitions.
+#
+# To update versions:
+# 1. Check https://marketplace.upbound.io/functions for latest versions
+# 2. Update the versions below
+# 3. Run xp-migrate with --config flag or place this file in:
+#    - Current directory (./function-versions.yaml)
+#    - ~/.config/xp-migrate/function-versions.yaml
+#
+# Format: function-name: version
+
+function-go-templating: v0.12.1
+function-auto-ready: v0.6.5
+function-extra-resources: v0.3.0
+function-patch-and-transform: v0.10.6

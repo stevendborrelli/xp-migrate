@@ -15,6 +15,8 @@ var (
 	dryRun               bool
 	scope                string
 	providerAPIGroupFlag []string
+	configFile           string
+	appConfig            *Config
 )
 
 var analyzeCmd = &cobra.Command{
@@ -59,6 +61,30 @@ Checks:
 	RunE: runValidate,
 }
 
+var initConfigCmd = &cobra.Command{
+	Use:   "init-config",
+	Short: "Generate configuration files",
+	Long: `Generate default configuration files for xp-migrate.
+
+Creates:
+- function-versions.yaml: Contains recommended function versions
+- xp-migrate.yaml: Full configuration file (with --full flag)
+
+Configuration files can be placed in:
+- Current directory
+- ~/.config/xp-migrate/
+
+Function versions can be updated by editing function-versions.yaml.
+Check https://marketplace.upbound.io/functions for latest versions.`,
+	RunE: runInitConfig,
+}
+
+var initConfigFull bool
+
+func init() {
+	initConfigCmd.Flags().BoolVar(&initConfigFull, "full", false, "Generate full xp-migrate.yaml config instead of just function-versions.yaml")
+}
+
 func init() {
 	migrateCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "", "Output directory for migrated files (default: same dir with -v2 suffix)")
 	migrateCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing files")
@@ -68,9 +94,12 @@ func init() {
 	analyzeCmd.Flags().StringVarP(&outputDir, "output", "o", "", "Output file for analysis report (default: STDOUT)")
 	analyzeCmd.Flags().StringSliceVar(&providerAPIGroupFlag, "provider-api-group", []string{}, "Additional provider API group mappings in format 'old.domain.io=new.domain.io' (can be specified multiple times)")
 	analyzeCmd.Flags().StringVar(&scope, "scope", "", "Override scope for XRD analysis (cluster or namespace). If not set, auto-detects based on composed resources.")
+	analyzeCmd.Flags().StringVar(&configFile, "config", "", "Path to config file (default: looks for xp-migrate.yaml or function-versions.yaml in current dir and ~/.config/xp-migrate/)")
+
+	migrateCmd.Flags().StringVar(&configFile, "config", "", "Path to config file (default: looks for xp-migrate.yaml or function-versions.yaml in current dir and ~/.config/xp-migrate/)")
 }
 
-func runAnalyze(cmd *cobra.Command, args []string) error {
+func runAnalyze(_ *cobra.Command, args []string) error {
 	// Validate scope flag
 	if scope != "" && scope != "namespace" && scope != "cluster" {
 		return fmt.Errorf("invalid scope: %s (must be 'namespace', 'cluster', or empty for auto-detect)", scope)
@@ -81,8 +110,15 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		path = args[0]
 	}
 
-	// Parse and merge provider API group mappings
-	providerMappings, err := parseProviderAPIGroups(providerAPIGroupFlag)
+	// Load configuration
+	var err error
+	appConfig, err = LoadConfig(configFile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Parse and merge provider API group mappings (CLI flags override config)
+	providerMappings, err := parseProviderAPIGroupsWithConfig(providerAPIGroupFlag, appConfig)
 	if err != nil {
 		return fmt.Errorf("failed to parse provider API groups: %w", err)
 	}
@@ -142,7 +178,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, file := range funcFiles {
-		funcAnalysis, err := AnalyzeFunctions(file)
+		funcAnalysis, err := AnalyzeFunctionsWithConfig(file, appConfig)
 		if err != nil {
 			fmt.Printf("Warning: failed to analyze %s: %v\n", file, err)
 			continue
@@ -177,6 +213,13 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
+	}
+
+	// Load configuration
+	var err error
+	appConfig, err = LoadConfig(configFile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	if dryRun {
@@ -226,7 +269,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	// Analyze functions
 	funcFiles, _ := FindFunctionFiles(path)
 	for _, file := range funcFiles {
-		funcAnalysis, err := AnalyzeFunctions(file)
+		funcAnalysis, err := AnalyzeFunctionsWithConfig(file, appConfig)
 		if err != nil {
 			continue
 		}
@@ -303,7 +346,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 
 	// Migrate Functions
 	for _, file := range funcFiles {
-		funcs, _ := AnalyzeFunctions(file)
+		funcs, _ := AnalyzeFunctionsWithConfig(file, appConfig)
 		needsUpdate := false
 		for _, f := range funcs {
 			if f.RequiresUpdate {
@@ -420,4 +463,86 @@ func parseProviderAPIGroups(flags []string) (map[string]string, error) {
 	}
 
 	return mappings, nil
+}
+
+// parseProviderAPIGroupsWithConfig parses provider API group flags and merges with config.
+func parseProviderAPIGroupsWithConfig(flags []string, cfg *Config) (map[string]string, error) {
+	// Start with config mappings (which already includes defaults)
+	mappings := make(map[string]string)
+	for k, v := range cfg.ProviderMappings {
+		mappings[k] = v
+	}
+
+	// Parse and merge custom mappings from CLI flags (CLI overrides config)
+	for _, flag := range flags {
+		parts := strings.Split(flag, "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid provider API group format: %s (expected 'old.domain.io=new.domain.io')", flag)
+		}
+		oldDomain := strings.TrimSpace(parts[0])
+		newDomain := strings.TrimSpace(parts[1])
+
+		if oldDomain == "" || newDomain == "" {
+			return nil, fmt.Errorf("empty domain in provider API group mapping: %s", flag)
+		}
+
+		mappings[oldDomain] = newDomain
+	}
+
+	return mappings, nil
+}
+
+func runInitConfig(_ *cobra.Command, _ []string) error {
+	if initConfigFull {
+		// Generate full xp-migrate.yaml
+		filename := DefaultConfigFileName
+		if _, err := os.Stat(filename); err == nil {
+			return fmt.Errorf("file %s already exists. Remove it first or use a different location", filename)
+		}
+
+		content := GenerateDefaultConfig()
+		if err := os.WriteFile(filename, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+
+		fmt.Printf("Generated %s with default configuration.\n", filename)
+		fmt.Println("\nYou can customize:")
+		fmt.Println("  - functionVersions: Recommended function versions")
+		fmt.Println("  - providerMappings: Provider API group migrations")
+		fmt.Println("  - clusterScopedKinds: Additional cluster-scoped resource kinds")
+	} else {
+		// Generate just function-versions.yaml
+		filename := DefaultFunctionVersionsFileName
+		if _, err := os.Stat(filename); err == nil {
+			return fmt.Errorf("file %s already exists. Remove it first or use a different location", filename)
+		}
+
+		content := GenerateFunctionVersionsFile()
+		header := `# Crossplane Function Versions
+# This file defines the recommended versions for composition functions.
+# xp-migrate will use these versions when migrating function definitions.
+#
+# To update versions:
+# 1. Check https://marketplace.upbound.io/functions for latest versions
+# 2. Update the versions below
+#
+# Format: function-name: version
+
+`
+		if err := os.WriteFile(filename, []byte(header+content), 0o644); err != nil {
+			return fmt.Errorf("failed to write function versions file: %w", err)
+		}
+
+		fmt.Printf("Generated %s with default function versions.\n", filename)
+		fmt.Println("\nTo update function versions:")
+		fmt.Println("  1. Check https://marketplace.upbound.io/functions for latest versions")
+		fmt.Println("  2. Edit function-versions.yaml with new versions")
+		fmt.Println("  3. Run xp-migrate analyze or migrate")
+	}
+
+	fmt.Println("\nConfiguration search locations:")
+	fmt.Println("  - Current directory")
+	fmt.Println("  - ~/.config/xp-migrate/")
+
+	return nil
 }

@@ -26,9 +26,20 @@ type functionDocument struct {
 
 // AnalyzeFunctions analyzes a functions.yaml file.
 func AnalyzeFunctions(filePath string) ([]FunctionAnalysis, error) {
+	return AnalyzeFunctionsWithConfig(filePath, nil)
+}
+
+// AnalyzeFunctionsWithConfig analyzes a functions.yaml file using provided config.
+func AnalyzeFunctionsWithConfig(filePath string, cfg *Config) ([]FunctionAnalysis, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read functions file: %w", err)
+	}
+
+	// Use config function versions if provided, otherwise use defaults
+	functionVersions := FunctionVersions
+	if cfg != nil && len(cfg.FunctionVersions) > 0 {
+		functionVersions = cfg.FunctionVersions
 	}
 
 	// Parse as multiple documents using typed structure
@@ -48,7 +59,7 @@ func AnalyzeFunctions(filePath string) ([]FunctionAnalysis, error) {
 
 		currentVersion := extractVersion(doc.Spec.Package)
 		functionName := extractFunctionName(doc.Spec.Package)
-		latestVersion := FunctionVersions[functionName]
+		latestVersion := functionVersions[functionName]
 
 		requiresUpdate := false
 		if latestVersion != "" && currentVersion != latestVersion {

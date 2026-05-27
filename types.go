@@ -194,10 +194,10 @@ var ProviderMappings = map[string]string{
 
 // FunctionVersions defines recommended function versions.
 var FunctionVersions = map[string]string{
-	"function-go-templating":       "v0.11.4",
-	"function-auto-ready":          "v0.6.1",
+	"function-go-templating":       "v0.12.1",
+	"function-auto-ready":          "v0.6.5",
 	"function-extra-resources":     "v0.3.0",
-	"function-patch-and-transform": "v0.8.0",
+	"function-patch-and-transform": "v0.10.6",
 }
 
 // ClusterScopedKinds lists Kubernetes cluster-scoped resource kinds.

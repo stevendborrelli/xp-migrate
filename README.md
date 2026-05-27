@@ -70,6 +70,25 @@ Validate that migrated files are correct:
 xp-migrate validate ./v2-configs
 ```
 
+### Initialize Config
+
+Generate a configuration file to customize function versions:
+
+```bash
+# Generate function-versions.yaml (recommended)
+xp-migrate init-config
+
+# Generate full xp-migrate.yaml with all options
+xp-migrate init-config --full
+```
+
+Use a custom config file:
+
+```bash
+xp-migrate analyze --config ./my-config.yaml
+xp-migrate migrate --config ./my-config.yaml
+```
+
 ## What Gets Migrated
 
 ### XRDs (CompositeResourceDefinitions)
@@ -99,11 +118,90 @@ xp-migrate validate ./v2-configs
 
 ### Functions
 
-- ✅ Update to latest stable versions:
-  - `function-go-templating`: → v0.11.4
-  - `function-auto-ready`: → v0.6.1
+- ✅ Update to latest stable versions (configurable via `function-versions.yaml`):
+  - `function-go-templating`: → v0.12.1
+  - `function-auto-ready`: → v0.6.5
   - `function-extra-resources`: → v0.3.0
-  - `function-patch-and-transform`: → v0.8.0
+  - `function-patch-and-transform`: → v0.10.6
+
+## Configuration
+
+xp-migrate supports external configuration files to customize function versions and provider mappings without modifying the binary.
+
+### Quick Start
+
+```bash
+# Generate a function-versions.yaml file
+xp-migrate init-config
+
+# Edit versions as needed
+vim function-versions.yaml
+
+# Run migration (automatically picks up config)
+xp-migrate migrate
+```
+
+### Configuration Files
+
+xp-migrate looks for configuration in these locations (in order):
+
+1. Path specified via `--config` flag
+2. `./function-versions.yaml` (current directory)
+3. `./xp-migrate.yaml` (current directory)
+4. `~/.config/xp-migrate/function-versions.yaml`
+5. `~/.config/xp-migrate/xp-migrate.yaml`
+
+### function-versions.yaml
+
+Simple format for just function versions:
+
+```yaml
+# Check https://marketplace.upbound.io/functions for latest versions
+function-go-templating: v0.12.1
+function-auto-ready: v0.6.5
+function-extra-resources: v0.3.0
+function-patch-and-transform: v0.10.6
+```
+
+### xp-migrate.yaml (Full Config)
+
+Full configuration with all options:
+
+```yaml
+# Function versions
+functionVersions:
+  function-go-templating: v0.12.1
+  function-auto-ready: v0.6.5
+  function-extra-resources: v0.3.0
+  function-patch-and-transform: v0.10.6
+
+# Provider API group mappings (old -> new)
+providerMappings:
+  aws.upbound.io: aws.m.upbound.io
+  azure.upbound.io: azure.m.upbound.io
+  gcp.upbound.io: gcp.m.upbound.io
+  kubernetes.crossplane.io: kubernetes.m.crossplane.io
+  # Add custom providers:
+  # mycompany.io: mycompany.m.io
+
+# Additional cluster-scoped resource kinds
+clusterScopedKinds:
+  - MyCustomClusterResource
+```
+
+Generate the full config:
+
+```bash
+xp-migrate init-config --full
+```
+
+### Updating Function Versions
+
+To update function versions to the latest:
+
+1. Check [Upbound Marketplace](https://marketplace.upbound.io/functions) for latest versions
+2. Update `function-versions.yaml`
+3. Run `xp-migrate analyze` or `xp-migrate migrate`
 
 ## Scope Detection
 
@@ -256,6 +354,51 @@ You should manually review:
 - **Management policies** if you had custom deletionPolicy logic
 - **Kubernetes Objects** - consider converting to native resources (breaking change, local cluster only)
 
+## Claude Code Skills
+
+This project includes Claude Code skills that provide an AI-assisted interface for planning and executing migrations. The skills wrap the `xp-migrate` CLI tool and provide interactive guidance.
+
+### Available Skills
+
+| Skill                   | Description                                          | Usage                                                                            |
+|-------------------------|------------------------------------------------------|----------------------------------------------------------------------------------|
+| `plan-v2-migration`     | Analyze configurations and generate migration report | When asked to "migrate to v2", "upgrade Crossplane", or "understand v2 changes"  |
+| `execute-v2-migration`  | Execute the migration with dry-run support           | When asked to "apply migration", "convert to v2", or "execute v2 changes"        |
+
+### Skill Features
+
+**plan-v2-migration:**
+
+- Verifies xp-migrate installation
+- Runs `xp-migrate analyze` on your configurations
+- Explains the migration report and breaking changes
+- Guides you through scope decisions
+
+**execute-v2-migration:**
+
+- Previews changes with `--dry-run` before modifying files
+- Executes `xp-migrate migrate` to transform files
+- Creates `-v2` suffix files, preserving originals
+- Validates results with `crossplane render`
+
+### Using Skills with Claude Code
+
+The skills are located in `./skills/` and can be used with Claude Code or the Claude marketplace plugin system:
+
+```text
+skills/
+├── plan-v2-migration/
+│   └── SKILL.md
+└── execute-v2-migration/
+    └── SKILL.md
+```
+
+When using Claude Code, simply ask:
+
+- "Help me migrate my Crossplane configuration to v2"
+- "Analyze my XRDs for v2 migration"
+- "Execute the v2 migration"
+
 ## Architecture
 
 The tool is organized into focused modules:
@@ -267,6 +410,7 @@ The tool is organized into focused modules:
 - `functions.go` - Function version updates
 - `report.go` - Report generation
 - `commands.go` - CLI command implementations
+- `skills/` - Claude Code skills for AI-assisted migration
 
 ## Testing
 

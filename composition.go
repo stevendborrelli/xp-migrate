@@ -72,19 +72,19 @@ func AnalyzeCompositionWithMappings(filePath string, providerMappings map[string
 	analysis.DeletionPolicyUsage = analyzeDeletionPolicy(lines)
 
 	// Analyze providerConfigRef
-	analysis.ProviderConfigRefs = analyzeProviderConfigRefs(content, lines)
+	analysis.ProviderConfigRefs = analyzeProviderConfigRefs(lines)
 
 	// Analyze claim references
-	analysis.ClaimReferences = analyzeClaimReferences(content, lines)
+	analysis.ClaimReferences = analyzeClaimReferences(lines)
 
 	// Analyze cluster-scoped resources
 	analysis.ClusterScopedResources = analyzeClusterScopedResources(lines)
 
 	// Analyze Kubernetes Objects
-	analysis.KubernetesObjects = analyzeKubernetesObjects(content, lines)
+	analysis.KubernetesObjects = analyzeKubernetesObjects(lines)
 
 	// Analyze EnvironmentConfig usage
-	analysis.EnvironmentConfigs = analyzeEnvironmentConfigs(content, lines)
+	analysis.EnvironmentConfigs = analyzeEnvironmentConfigs(lines)
 
 	// Determine if migration is required
 	analysis.RequiresMigration = needsCompositionMigration(analysis)
@@ -189,7 +189,7 @@ func analyzeDeletionPolicy(lines []string) []DeletionPolicyLocation {
 	return locations
 }
 
-func analyzeProviderConfigRefs(content string, lines []string) []ProviderConfigRefLocation {
+func analyzeProviderConfigRefs(lines []string) []ProviderConfigRefLocation {
 	var locations []ProviderConfigRefLocation
 
 	providerConfigRefRegex := regexp.MustCompile(`^\s*providerConfigRef:`)
@@ -221,7 +221,7 @@ func analyzeProviderConfigRefs(content string, lines []string) []ProviderConfigR
 	return locations
 }
 
-func analyzeClaimReferences(content string, lines []string) []ClaimReference {
+func analyzeClaimReferences(lines []string) []ClaimReference {
 	var refs []ClaimReference
 
 	namespaceRegex := regexp.MustCompile(`crossplane\.io/claim-namespace`)
@@ -267,7 +267,7 @@ func analyzeClusterScopedResources(lines []string) []ClusterScopedResource {
 	return resources
 }
 
-func analyzeKubernetesObjects(content string, lines []string) []KubernetesObject {
+func analyzeKubernetesObjects(lines []string) []KubernetesObject {
 	var objects []KubernetesObject
 
 	apiVersionRegex := regexp.MustCompile(`apiVersion:\s*(kubernetes\.(crossplane\.io|m\.crossplane\.io)/(v1(alpha|beta)\d+))`)
@@ -306,7 +306,7 @@ func analyzeKubernetesObjects(content string, lines []string) []KubernetesObject
 	return objects
 }
 
-func analyzeEnvironmentConfigs(content string, lines []string) []EnvironmentConfigUsage {
+func analyzeEnvironmentConfigs(lines []string) []EnvironmentConfigUsage {
 	var configs []EnvironmentConfigUsage
 
 	envConfigRegex := regexp.MustCompile(`apiextensions\.crossplane\.io/(v1alpha1).*EnvironmentConfig`)
@@ -410,7 +410,7 @@ func buildCompositionChanges(a *CompositionAnalysis) {
 		for _, r := range a.ClusterScopedResources {
 			kinds[r.Kind] = true
 		}
-		kindList := []string{}
+		kindList := make([]string, len(kinds), 2*len(kinds))
 		for k := range kinds {
 			kindList = append(kindList, k)
 		}
