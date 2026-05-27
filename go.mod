@@ -1,4 +1,4 @@
-module github.com/upbound/xp-migrate
+module github.com/stevendborrelli/xp-migrate
 
 go 1.26.1
 
